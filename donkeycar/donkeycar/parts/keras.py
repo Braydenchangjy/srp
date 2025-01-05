@@ -28,11 +28,13 @@ from tensorflow.keras.layers import (Dense, Input,Convolution2D,
     MaxPooling2D, Activation, Dropout, Flatten, LSTM, BatchNormalization,
     Conv3D, MaxPooling3D, Conv2DTranspose)
 
+from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import TimeDistributed as TD
 from tensorflow.keras.backend import concatenate
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.regularizers import l1, l2
+from tensorflow.keras.layers import InputLayer
 
 ONE_BYTE_SCALE = 1.0 / 255.0
 
@@ -1080,12 +1082,63 @@ def build_3d_cnn(input_shape, s, num_outputs): # Referred to as 3DCNN model in r
 
     if regularizer_type == "l1":
         regularizer = l1(regularizer_lambda)
-    elif regularization_type == "l2":
+    elif regularizer_type == "l2":
         regularizer = l2(regularizer_lambda)
     else:
         regularizer = None
 
     input_shape = (s, ) + input_shape
+
+    model = Sequential(name='3dcnn')
+
+    # Explicitly create the InputLayer with name='img_in'
+    model.add(InputLayer(input_shape=input_shape, name='img_in'))
+
+    # First Conv3D Layer
+    model.add(Conv3D(
+        filters=16, kernel_size=(3, 3, 3), strides=(1, 3, 3),
+        input_shape=input_shape, data_format='channels_last',
+        padding='same', activation='relu', kernel_regularizer=regularizer))
+    model.add(MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid'))
+
+    # Second Conv3D Layer
+    model.add(Conv3D(
+        filters=32, kernel_size=(3, 3, 3), strides=(1, 1, 1),
+        data_format='channels_last', padding='same', activation='relu', kernel_regularizer=regularizer))
+    model.add(MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid'))
+
+    # Third Conv3D Layer
+    model.add(Conv3D(
+        filters=64, kernel_size=(3, 3, 3), strides=(1, 1, 1),
+        data_format='channels_last', padding='same', activation='relu', kernel_regularizer=regularizer))
+    model.add(MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid'))
+
+    # Fourth Conv3D Layer
+    model.add(Conv3D(
+        filters=128, kernel_size=(3, 3, 3), strides=(1, 1, 1),
+        data_format='channels_last', padding='same', activation='relu', kernel_regularizer=regularizer))
+    model.add(MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid'))
+
+    # Flatten
+    model.add(Flatten())
+
+    # Fully Connected Layers
+    model.add(Dense(256, kernel_regularizer=regularizer))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Dropout(drop))
+
+    model.add(Dense(256, kernel_regularizer=regularizer))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Dropout(drop))
+
+    # Output Layer
+    model.add(Dense(num_outputs, name='outputs'))
+
+    return model
+
+    #######################
     img_in = Input(shape=input_shape, name='img_in')
     x = img_in
     # Second layer
