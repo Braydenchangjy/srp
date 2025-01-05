@@ -1101,7 +1101,7 @@ def build_3d_cnn(input_shape, s, num_outputs): # Referred to as 3DCNN model in r
             data_format='channels_last', padding='same', activation='relu', kernel_regularizer=regularizer)(x)
     x = MaxPooling3D(
         pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
-        data_format=None)(x)
+        data_format=None)(x) 
     # Fourth layer
     x = Conv3D(
             filters=64, kernel_size=(3, 3, 3), strides=(1, 1, 1),

@@ -2,7 +2,7 @@ import os
 import json
 
 # Paths for the catalog and image folders
-catalog_folder = './data_loop/images2024/2'
+catalog_folder = './data_loop/house/2'
 image_folder = os.path.join(catalog_folder, 'images')
 
 # Function to process each catalog file

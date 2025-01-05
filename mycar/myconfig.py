@@ -67,7 +67,7 @@ DATA_PATH = os.path.join(CAR_PATH, 'data_loop/images'+ today, tub_number)
 # 
 # #THROTTLE
 # THROTTLE_CHANNEL = 1            #channel on the 9685 pwm board 0-15
-THROTTLE_FORWARD_PWM = 500      #pwm value for max forward throttle
+THROTTLE_FORWARD_PWM = 410      #pwm value for max forward throttle
 THROTTLE_STOPPED_PWM = 370      #pwm value for no movement
 THROTTLE_REVERSE_PWM = 220      #pwm value for max reverse throttle
 # 
@@ -131,7 +131,7 @@ THROTTLE_REVERSE_PWM = 220      #pwm value for max reverse throttle
 # #line parameter --type to the python manage.py train and drive commands.
 # # tensorflow models: (linear|categorical|tflite_linear|tensorrt_linear)
 # # pytorch models: (resnet18)
-DEFAULT_MODEL_TYPE = 'linear'
+DEFAULT_MODEL_TYPE = '3d' #models: imu, memory, behavior, inferred, localizer, categorical, rnn, 3d, linear, tflite_imu, tflite_memory, tflite_behavior, tflite_inferred, tflite_localizer, tflite_categorical, tflite_rnn, tflite_3d, tflite_linear, tensorrt_imu, tensorrt_memory, tensorrt_behavior, tensorrt_inferred, tensorrt_localizer, tensorrt_categorical, tensorrt_rnn, tensorrt_3d, tensorrt_linear
 BATCH_SIZE = 64                #how many records to use when doing one pass of gradient decent. Use a smaller number if your gpu is running out of memory.
 # TRAIN_TEST_SPLIT = 0.8          #what percent of records to use for training. the remaining used for validation.
 MAX_EPOCHS = 100                #how many times to visit all records of your data
