@@ -124,15 +124,15 @@ DATA_PATH = os.path.join(CAR_PATH, 'data_loop/images'+ today, tub_number)
 # 
 # #TRAINING
 # # The default AI framework to use. Choose from (tensorflow|pytorch)
-# DEFAULT_AI_FRAMEWORK = 'tensorflow'
+DEFAULT_AI_FRAMEWORK = 'pytorch'
 # 
 # #The DEFAULT_MODEL_TYPE will choose which model will be created at training time. This chooses
 # #between different neural network designs. You can override this setting by passing the command
 # #line parameter --type to the python manage.py train and drive commands.
 # # tensorflow models: (linear|categorical|tflite_linear|tensorrt_linear)
 # # pytorch models: (resnet18)
-DEFAULT_MODEL_TYPE = '3d' #models: imu, memory, behavior, inferred, localizer, categorical, rnn, 3d, linear, tflite_imu, tflite_memory, tflite_behavior, tflite_inferred, tflite_localizer, tflite_categorical, tflite_rnn, tflite_3d, tflite_linear, tensorrt_imu, tensorrt_memory, tensorrt_behavior, tensorrt_inferred, tensorrt_localizer, tensorrt_categorical, tensorrt_rnn, tensorrt_3d, tensorrt_linear
-BATCH_SIZE = 8                #how many records to use when doing one pass of gradient decent. Use a smaller number if your gpu is running out of memory.
+DEFAULT_MODEL_TYPE = 'resnet18' #models: imu, memory, behavior, inferred, localizer, categorical, rnn, 3d, linear, tflite_imu, tflite_memory, tflite_behavior, tflite_inferred, tflite_localizer, tflite_categorical, tflite_rnn, tflite_3d, tflite_linear, tensorrt_imu, tensorrt_memory, tensorrt_behavior, tensorrt_inferred, tensorrt_localizer, tensorrt_categorical, tensorrt_rnn, tensorrt_3d, tensorrt_linear
+BATCH_SIZE = 64                #how many records to use when doing one pass of gradient decent. Use a smaller number if your gpu is running out of memory.
 # TRAIN_TEST_SPLIT = 0.8          #what percent of records to use for training. the remaining used for validation.
 MAX_EPOCHS = 1                #how many times to visit all records of your data
 # SHOW_PLOT = True                #would you like to see a pop up display of final loss?
