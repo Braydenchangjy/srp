@@ -8,11 +8,12 @@ include one or more models to help direct the vehicles motion.
 
 """
 
+import datetime
 from abc import ABC, abstractmethod
 from collections import deque
 
 import numpy as np
-from typing import Dict, Tuple, Optional, Union, List, Sequence, Callable
+from typing import Dict, Tuple, Optional, Union, List, Sequence, Callable, Any
 from logging import getLogger
 
 from tensorflow.python.data.ops.dataset_ops import DatasetV1, DatasetV2
@@ -24,16 +25,17 @@ from donkeycar.parts.interpreter import Interpreter, KerasInterpreter
 
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.layers import Input, Dense
-from tensorflow.keras.layers import Convolution2D, MaxPooling2D, \
-    BatchNormalization
-from tensorflow.keras.layers import Activation, Dropout, Flatten
-from tensorflow.keras.layers import LSTM
+from tensorflow.keras.layers import (Dense, Input,Convolution2D,
+    MaxPooling2D, Activation, Dropout, Flatten, LSTM, BatchNormalization,
+    Conv3D, MaxPooling3D, Conv2DTranspose)
+
+from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import TimeDistributed as TD
-from tensorflow.keras.layers import Conv3D, MaxPooling3D, Conv2DTranspose
 from tensorflow.keras.backend import concatenate
 from tensorflow.keras.models import Model
-from tensorflow.python.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.regularizers import l1, l2
+from tensorflow.keras.layers import InputLayer
 
 ONE_BYTE_SCALE = 1.0 / 255.0
 
@@ -792,11 +794,22 @@ def conv2d(filters, kernel, strides, layer_num, activation='relu'):
     :param activation:  activation, defaults to relu
     :return:            tf.keras Convolution2D layer
     """
+    regularizer_type = "l1" # set to "None" to disable regularization
+    regularizer_lambda = 0.01 
+
+    if regularizer_type == "l1":
+        regularizer = l1(regularizer_lambda)
+    elif regularizer_type == "l2":
+        regularizer = l2(regularizer_lambda)
+    else:
+        regularizer = None
+
     return Convolution2D(filters=filters,
                          kernel_size=(kernel, kernel),
                          strides=(strides, strides),
                          activation=activation,
-                         name='conv2d_' + str(layer_num))
+                         name='conv2d_' + str(layer_num),
+                         kernel_regularizer=regularizer)
 
 
 def core_cnn_layers(img_in, drop, l4_stride=1):
@@ -826,11 +839,21 @@ def core_cnn_layers(img_in, drop, l4_stride=1):
 
 def default_n_linear(num_outputs, input_shape=(120, 160, 3)):
     drop = 0.2
+    regularizer_type = "l1" # set to "None" to disable regularization
+    regularizer_lambda = 0.01 
+
+    if regularizer_type == "l1":
+        regularizer = l1(regularizer_lambda)
+    elif regularizer_type == "l2":
+        regularizer = l2(regularizer_lambda)
+    else:
+        regularizer = None
+
     img_in = Input(shape=input_shape, name='img_in')
     x = core_cnn_layers(img_in, drop)
-    x = Dense(100, activation='relu', name='dense_1')(x)
+    x = Dense(100, activation='relu', name='dense_1', kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Dense(50, activation='relu', name='dense_2')(x)
+    x = Dense(50, activation='relu', name='dense_2', kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
 
     outputs = []
@@ -842,9 +865,21 @@ def default_n_linear(num_outputs, input_shape=(120, 160, 3)):
     return model
 
 
+
 def default_memory(input_shape=(120, 160, 3), mem_length=3, mem_depth=0):
     drop = 0.2
     drop2 = 0.1
+
+    regularizer_type = "l1" # set to "None" to disable regularization
+    regularizer_lambda = 0.01 
+
+    if regularizer_type == "l1":
+        regularizer = l1(regularizer_lambda)
+    elif regularizer_type == "l2":
+        regularizer = l2(regularizer_lambda)
+    else:
+        regularizer = None
+
     logger.info(f'Creating memory model with length {mem_length}, depth '
                 f'{mem_depth}')
     img_in = Input(shape=input_shape, name='img_in')
@@ -852,22 +887,21 @@ def default_memory(input_shape=(120, 160, 3), mem_length=3, mem_depth=0):
     mem_in = Input(shape=(2 * mem_length,), name='mem_in')
     y = mem_in
     for i in range(mem_depth):
-        y = Dense(4 * mem_length, activation='relu', name=f'mem_{i}')(y)
+        y = Dense(4 * mem_length, activation='relu', name=f'mem_{i}', kernel_regularizer=regularizer)(y)
         y = Dropout(drop2)(y)
     for i in range(1, mem_length):
-        y = Dense(2 * (mem_length - i), activation='relu', name=f'mem_c_{i}')(y)
+        y = Dense(2 * (mem_length - i), activation='relu', name=f'mem_c_{i}', kernel_regularizer=regularizer)(y)
         y = Dropout(drop2)(y)
     x = concatenate([x, y])
-    x = Dense(100, activation='relu', name='dense_1')(x)
+    x = Dense(100, activation='relu', name='dense_1', kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Dense(50, activation='relu', name='dense_2')(x)
+    x = Dense(50, activation='relu', name='dense_2', kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
     activation = ['tanh', 'sigmoid']
     outputs = [Dense(1, activation=activation[i], name='n_outputs' + str(i))(x)
                for i in range(2)]
     model = Model(inputs=[img_in, mem_in], outputs=outputs, name='memory')
     return model
-
 
 def default_categorical(input_shape=(120, 160, 3)):
     drop = 0.2
@@ -980,28 +1014,38 @@ def rnn_lstm(seq_length=3, num_outputs=2, input_shape=(120, 160, 3)):
     img_in = Input(shape=img_seq_shape, name='img_in')
     drop_out = 0.3
 
+    regularizer_type = "l1" # set to "None" to disable regularization
+    regularizer_lambda = 0.01 
+
+    if regularizer_type == "l1":
+        regularizer = l1(regularizer_lambda)
+    elif regularizer_type == "l2":
+        regularizer = l2(regularizer_lambda)
+    else:
+        regularizer = None
+
     x = img_in
-    x = TD(Convolution2D(24, (5, 5), strides=(2, 2), activation='relu'))(x)
+    x = TD(Convolution2D(24, (5, 5), strides=(2, 2), activation='relu', kernel_regularizer=regularizer))(x)
     x = TD(Dropout(drop_out))(x)
-    x = TD(Convolution2D(32, (5, 5), strides=(2, 2), activation='relu'))(x)
+    x = TD(Convolution2D(32, (5, 5), strides=(2, 2), activation='relu', kernel_regularizer=regularizer))(x)
     x = TD(Dropout(drop_out))(x)
-    x = TD(Convolution2D(32, (3, 3), strides=(2, 2), activation='relu'))(x)
+    x = TD(Convolution2D(32, (3, 3), strides=(2, 2), activation='relu', kernel_regularizer=regularizer))(x)
     x = TD(Dropout(drop_out))(x)
-    x = TD(Convolution2D(32, (3, 3), strides=(1, 1), activation='relu'))(x)
+    x = TD(Convolution2D(32, (3, 3), strides=(1, 1), activation='relu', kernel_regularizer=regularizer))(x)
     x = TD(Dropout(drop_out))(x)
     x = TD(MaxPooling2D(pool_size=(2, 2)))(x)
     x = TD(Flatten(name='flattened'))(x)
-    x = TD(Dense(100, activation='relu'))(x)
+    x = TD(Dense(100, activation='relu', kernel_regularizer=regularizer))(x)
     x = TD(Dropout(drop_out))(x)
 
-    x = LSTM(128, return_sequences=True, name="LSTM_seq")(x)
+    x = LSTM(128, return_sequences=True, name="LSTM_seq", kernel_regularizer=regularizer)(x)
     x = Dropout(.1)(x)
-    x = LSTM(128, return_sequences=False, name="LSTM_fin")(x)
+    x = LSTM(128, return_sequences=False, name="LSTM_fin", kernel_regularizer=regularizer)(x)
     x = Dropout(.1)(x)
-    x = Dense(128, activation='relu')(x)
+    x = Dense(128, activation='relu', kernel_regularizer=regularizer)(x)
     x = Dropout(.1)(x)
-    x = Dense(64, activation='relu')(x)
-    x = Dense(10, activation='relu')(x)
+    x = Dense(64, activation='relu', kernel_regularizer=regularizer)(x)
+    x = Dense(10, activation='relu', kernel_regularizer=regularizer)(x)
     out = Dense(num_outputs, activation='linear', name='model_outputs')(x)
     model = Model(inputs=[img_in], outputs=[out], name='lstm')
     return model
@@ -1017,101 +1061,127 @@ def build_3d_cnn(input_shape, s, num_outputs):
     :return:                keras model
     """
     drop = 0.5
-    input_shape = (s, ) + input_shape
+    regularizer_type = "l1"  # Set to "None" to disable regularization
+    regularizer_lambda = 0.01
+
+    if regularizer_type == "l1":
+        regularizer = l1(regularizer_lambda)
+    elif regularizer_type == "l2":
+        regularizer = l2(regularizer_lambda)
+    else:
+        regularizer = None
+
+    input_shape = (s,) + input_shape
     img_in = Input(shape=input_shape, name='img_in')
     x = img_in
+
     # Second layer
     x = Conv3D(
-            filters=16, kernel_size=(3, 3, 3), strides=(1, 3, 3),
-            data_format='channels_last', padding='same', activation='relu')(x)
-    x = MaxPooling3D(
-            pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
-            data_format=None)(x)
-    # Third layer
-    x = Conv3D(
-            filters=32, kernel_size=(3, 3, 3), strides=(1, 1, 1),
-            data_format='channels_last', padding='same', activation='relu')(x)
+        filters=16, kernel_size=(3, 3, 3), strides=(1, 3, 3),
+        data_format='channels_last', padding='same', activation='relu',
+        kernel_regularizer=regularizer)(x)
     x = MaxPooling3D(
         pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
         data_format=None)(x)
+
+    # Third layer
+    x = Conv3D(
+        filters=32, kernel_size=(3, 3, 3), strides=(1, 1, 1),
+        data_format='channels_last', padding='same', activation='relu',
+        kernel_regularizer=regularizer)(x)
+    x = MaxPooling3D(
+        pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
+        data_format=None)(x)
+
     # Fourth layer
     x = Conv3D(
-            filters=64, kernel_size=(3, 3, 3), strides=(1, 1, 1),
-            data_format='channels_last', padding='same', activation='relu')(x)
+        filters=64, kernel_size=(3, 3, 3), strides=(1, 1, 1),
+        data_format='channels_last', padding='same', activation='relu',
+        kernel_regularizer=regularizer)(x)
     x = MaxPooling3D(
-            pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
-            data_format=None)(x)
+        pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
+        data_format=None)(x)
+
     # Fifth layer
     x = Conv3D(
-            filters=128, kernel_size=(3, 3, 3), strides=(1, 1, 1),
-            data_format='channels_last', padding='same', activation='relu')(x)
+        filters=128, kernel_size=(3, 3, 3), strides=(1, 1, 1),
+        data_format='channels_last', padding='same', activation='relu',
+        kernel_regularizer=regularizer)(x)
     x = MaxPooling3D(
-            pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
-            data_format=None)(x)
+        pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
+        data_format=None)(x)
+
     # Fully connected layer
     x = Flatten()(x)
-
-    x = Dense(256)(x)
+    x = Dense(256, kernel_regularizer=regularizer)(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Dropout(drop)(x)
 
-    x = Dense(256)(x)
+    x = Dense(256, kernel_regularizer=regularizer)(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Dropout(drop)(x)
 
-    out = Dense(num_outputs, name='outputs')(x)
+    out = Dense(num_outputs, name='outputs', kernel_regularizer=regularizer)(x)
     model = Model(inputs=[img_in], outputs=out, name='3dcnn')
     return model
 
-
 def default_latent(num_outputs, input_shape):
-    # TODO: this auto-encoder should run the standard cnn in encoding and
-    #  have corresponding decoder. Also outputs should be reversed with
-    #  images at end.
+    """
+    Implements a latent model with regularization.
+
+    :param num_outputs:     number of outputs for the model
+    :param input_shape:     input image shape
+    :return:                keras model
+    """
     drop = 0.2
+    regularizer_type = "l1"  # Set to "None" to disable regularization
+    regularizer_lambda = 0.01
+
+    if regularizer_type == "l1":
+        regularizer = l1(regularizer_lambda)
+    elif regularizer_type == "l2":
+        regularizer = l2(regularizer_lambda)
+    else:
+        regularizer = None
+
     img_in = Input(shape=input_shape, name='img_in')
     x = img_in
-    x = Convolution2D(24, 5, strides=2, activation='relu', name="conv2d_1")(x)
+    x = Convolution2D(24, 5, strides=2, activation='relu', name="conv2d_1", kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(32, 5, strides=2, activation='relu', name="conv2d_2")(x)
+    x = Convolution2D(32, 5, strides=2, activation='relu', name="conv2d_2", kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(32, 5, strides=2, activation='relu', name="conv2d_3")(x)
+    x = Convolution2D(32, 5, strides=2, activation='relu', name="conv2d_3", kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(32, 3, strides=1, activation='relu', name="conv2d_4")(x)
+    x = Convolution2D(32, 3, strides=1, activation='relu', name="conv2d_4", kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(32, 3, strides=1, activation='relu', name="conv2d_5")(x)
+    x = Convolution2D(32, 3, strides=1, activation='relu', name="conv2d_5", kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(64, 3, strides=2, activation='relu', name="conv2d_6")(x)
+    x = Convolution2D(64, 3, strides=2, activation='relu', name="conv2d_6", kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(64, 3, strides=2, activation='relu', name="conv2d_7")(x)
+    x = Convolution2D(64, 3, strides=2, activation='relu', name="conv2d_7", kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(64, 1, strides=2, activation='relu', name="latent")(x)
-    
-    y = Conv2DTranspose(filters=64, kernel_size=3, strides=2,
-                        name="deconv2d_1")(x)
-    y = Conv2DTranspose(filters=64, kernel_size=3, strides=2,
-                        name="deconv2d_2")(y)
-    y = Conv2DTranspose(filters=32, kernel_size=3, strides=2,
-                        name="deconv2d_3")(y)
-    y = Conv2DTranspose(filters=32, kernel_size=3, strides=2,
-                        name="deconv2d_4")(y)
-    y = Conv2DTranspose(filters=32, kernel_size=3, strides=2,
-                        name="deconv2d_5")(y)
+    x = Convolution2D(64, 1, strides=2, activation='relu', name="latent", kernel_regularizer=regularizer)(x)
+
+    y = Conv2DTranspose(filters=64, kernel_size=3, strides=2, name="deconv2d_1")(x)
+    y = Conv2DTranspose(filters=64, kernel_size=3, strides=2, name="deconv2d_2")(y)
+    y = Conv2DTranspose(filters=32, kernel_size=3, strides=2, name="deconv2d_3")(y)
+    y = Conv2DTranspose(filters=32, kernel_size=3, strides=2, name="deconv2d_4")(y)
+    y = Conv2DTranspose(filters=32, kernel_size=3, strides=2, name="deconv2d_5")(y)
     y = Conv2DTranspose(filters=1, kernel_size=3, strides=2, name="img_out")(y)
-    
+
     x = Flatten(name='flattened')(x)
-    x = Dense(256, activation='relu')(x)
+    x = Dense(256, activation='relu', kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Dense(100, activation='relu')(x)
+    x = Dense(100, activation='relu', kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
-    x = Dense(50, activation='relu')(x)
+    x = Dense(50, activation='relu', kernel_regularizer=regularizer)(x)
     x = Dropout(drop)(x)
 
     outputs = [y]
     for i in range(num_outputs):
-        outputs.append(Dense(1, activation='linear', name='n_outputs' + str(i))(x))
-        
+        outputs.append(Dense(1, activation='linear', name='n_outputs' + str(i), kernel_regularizer=regularizer)(x))
+
     model = Model(inputs=[img_in], outputs=outputs, name='latent')
     return model
