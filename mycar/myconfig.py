@@ -124,14 +124,14 @@ DATA_PATH = os.path.join(CAR_PATH, 'data_loop/images'+ today, tub_number)
 # 
 # #TRAINING
 # # The default AI framework to use. Choose from (tensorflow|pytorch)
-DEFAULT_AI_FRAMEWORK = 'pytorch'
+# DEFAULT_AI_FRAMEWORK = 'tensorflow'
 # 
 # #The DEFAULT_MODEL_TYPE will choose which model will be created at training time. This chooses
 # #between different neural network designs. You can override this setting by passing the command
 # #line parameter --type to the python manage.py train and drive commands.
 # # tensorflow models: (linear|categorical|tflite_linear|tensorrt_linear)
 # # pytorch models: (resnet18)
-DEFAULT_MODEL_TYPE = 'resnet18' #models: imu, memory, behavior, inferred, localizer, categorical, rnn, 3d, linear, tflite_imu, tflite_memory, tflite_behavior, tflite_inferred, tflite_localizer, tflite_categorical, tflite_rnn, tflite_3d, tflite_linear, tensorrt_imu, tensorrt_memory, tensorrt_behavior, tensorrt_inferred, tensorrt_localizer, tensorrt_categorical, tensorrt_rnn, tensorrt_3d, tensorrt_linear
+DEFAULT_MODEL_TYPE = 'linear' #models: imu, memory, behavior, inferred, localizer, categorical, rnn, 3d, linear, tflite_imu, tflite_memory, tflite_behavior, tflite_inferred, tflite_localizer, tflite_categorical, tflite_rnn, tflite_3d, tflite_linear, tensorrt_imu, tensorrt_memory, tensorrt_behavior, tensorrt_inferred, tensorrt_localizer, tensorrt_categorical, tensorrt_rnn, tensorrt_3d, tensorrt_linear
 BATCH_SIZE = 64                #how many records to use when doing one pass of gradient decent. Use a smaller number if your gpu is running out of memory.
 # TRAIN_TEST_SPLIT = 0.8          #what percent of records to use for training. the remaining used for validation.
 MAX_EPOCHS = 1                #how many times to visit all records of your data
@@ -179,7 +179,7 @@ PRUNE_EVAL_PERCENT_OF_DATASET = .05  # percent of dataset used to perform evalua
 # USE_NETWORKED_JS = False            #should we listen for remote joystick control over the network?
 # NETWORK_JS_SERVER_IP = None         #when listening for network joystick control, which ip is serving this information
 # JOYSTICK_DEADZONE = 0.01            # when non zero, this is the smallest throttle before recording triggered.
-# JOYSTICK_THROTTLE_DIR = -1.0         # use -1.0 to flip forward/backward, use 1.0 to use joystick's natural forward/backward
+# JOYSTICK_THROTTLE_DIR = -1.0        # use -1.0 to flip forward/backward, use 1.0 to use joystick's natural forward/backward
 # USE_FPV = False                     # send camera data to FPV webserver
 # JOYSTICK_DEVICE_FILE = "/dev/input/js0" # this is the unix file use to access the joystick.
 # 

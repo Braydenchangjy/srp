@@ -7,12 +7,12 @@ logic used to determine the angle and throttle of a vehicle. Pilots can
 include one or more models to help direct the vehicles motion.
 
 """
-import datetime
+
 from abc import ABC, abstractmethod
 from collections import deque
 
 import numpy as np
-from typing import Dict, Tuple, Optional, Union, List, Sequence, Callable, Any
+from typing import Dict, Tuple, Optional, Union, List, Sequence, Callable
 from logging import getLogger
 
 from tensorflow.python.data.ops.dataset_ops import DatasetV1, DatasetV2
@@ -24,17 +24,16 @@ from donkeycar.parts.interpreter import Interpreter, KerasInterpreter
 
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.layers import (Dense, Input,Convolution2D,
-    MaxPooling2D, Activation, Dropout, Flatten, LSTM, BatchNormalization,
-    Conv3D, MaxPooling3D, Conv2DTranspose)
-
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Input, Dense
+from tensorflow.keras.layers import Convolution2D, MaxPooling2D, \
+    BatchNormalization
+from tensorflow.keras.layers import Activation, Dropout, Flatten
+from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import TimeDistributed as TD
+from tensorflow.keras.layers import Conv3D, MaxPooling3D, Conv2DTranspose
 from tensorflow.keras.backend import concatenate
 from tensorflow.keras.models import Model
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-from tensorflow.keras.regularizers import l1, l2
-from tensorflow.keras.layers import InputLayer
+from tensorflow.python.keras.callbacks import EarlyStopping, ModelCheckpoint
 
 ONE_BYTE_SCALE = 1.0 / 255.0
 
@@ -89,13 +88,13 @@ class KerasPilot(ABC):
             raise Exception(f"Unknown optimizer type: {optimizer_type}")
         self.interpreter.set_optimizer(optimizer)
 
-    def get_input_shape(self, input_name) -> tf.TensorShape:
-        return self.interpreter.get_input_shape(input_name)
+    def get_input_shapes(self) -> List[tf.TensorShape]:
+        return self.interpreter.get_input_shapes()
 
     def seq_size(self) -> int:
         return 0
 
-    def run(self, img_arr: np.ndarray, *other_arr: List[float]) \
+    def run(self, img_arr: np.ndarray, other_arr: List[float] = None) \
             -> Tuple[Union[float, np.ndarray], ...]:
         """
         Donkeycar parts interface to run the part in the loop.
@@ -106,17 +105,22 @@ class KerasPilot(ABC):
                             state vector in the Behavioural model
         :return:            tuple of (angle, throttle)
         """
-        norm_img_arr = normalize_image(img_arr)
-        np_other_array = tuple(np.array(arr) for arr in other_arr)
-        # create dictionary on the fly, we expect the order of the arguments:
-        # img_arr, *other_arr to exactly match the order of the
-        # self.output_shape() first dictionary keys, because that's how we
-        # set up the model
-        values = (norm_img_arr, ) + np_other_array
-        # note output_shapes() returns a 2-tuple of dicts for input shapes
-        # and output shapes(), so we need the first tuple here
-        input_dict = dict(zip(self.output_shapes()[0].keys(), values))
-        return self.inference_from_dict(input_dict)
+        norm_arr = normalize_image(img_arr)
+        np_other_array = np.array(other_arr) if other_arr else None
+        return self.inference(norm_arr, np_other_array)
+
+    def inference(self, img_arr: np.ndarray, other_arr: Optional[np.ndarray]) \
+            -> Tuple[Union[float, np.ndarray], ...]:
+        """ Inferencing using the interpreter
+            :param img_arr:     float32 [0,1] numpy array with normalized image
+                                data
+            :param other_arr:   numpy array of additional data to be used in the
+                                pilot, like IMU array for the IMU model or a
+                                state vector in the Behavioural model
+            :return:            tuple of (angle, throttle)
+        """
+        out = self.interpreter.predict(img_arr, other_arr)
+        return self.interpreter_to_output(out)
 
     def inference_from_dict(self, input_dict: Dict[str, np.ndarray]) \
             -> Tuple[Union[float, np.ndarray], ...]:
@@ -166,8 +170,6 @@ class KerasPilot(ABC):
                             save_best_only=True,
                             verbose=verbose)]
 
-        tic = datetime.datetime.now()
-        logger.info('////////// Starting training //////////')
         history: tf.keras.callbacks.History = model.fit(
             x=train_data,
             steps_per_epoch=train_steps,
@@ -179,9 +181,7 @@ class KerasPilot(ABC):
             verbose=verbose,
             workers=1,
             use_multiprocessing=False)
-        toc = datetime.datetime.now()
-        logger.info(f'////////// Finished training in: {toc - tic} //////////')
-
+            
         if show_plot:
             try:
                 import matplotlib.pyplot as plt
@@ -271,8 +271,8 @@ class KerasCategorical(KerasPilot):
                  interpreter: Interpreter = KerasInterpreter(),
                  input_shape: Tuple[int, ...] = (120, 160, 3),
                  throttle_range: float = 0.5):
-        self.throttle_range = throttle_range
         super().__init__(interpreter, input_shape)
+        self.throttle_range = throttle_range
 
     def create_model(self):
         return default_categorical(self.input_shape)
@@ -304,15 +304,11 @@ class KerasCategorical(KerasPilot):
 
     def output_shapes(self):
         # need to cut off None from [None, 120, 160, 3] tensor shape
-        img_shape = self.get_input_shape('img_in')[1:]
+        img_shape = self.get_input_shapes()[0][1:]
         shapes = ({'img_in': tf.TensorShape(img_shape)},
                   {'angle_out': tf.TensorShape([15]),
                    'throttle_out': tf.TensorShape([20])})
         return shapes
-
-    def __str__(self) -> str:
-        """ For printing model initialisation """
-        return super().__str__() + f'-R:{self.throttle_range}'
 
 
 class KerasLinear(KerasPilot):
@@ -348,7 +344,7 @@ class KerasLinear(KerasPilot):
 
     def output_shapes(self):
         # need to cut off None from [None, 120, 160, 3] tensor shape
-        img_shape = self.get_input_shape('img_in')[1:]
+        img_shape = self.get_input_shapes()[0][1:]
         shapes = ({'img_in': tf.TensorShape(img_shape)},
                   {'n_outputs0': tf.TensorShape([]),
                    'n_outputs1': tf.TensorShape([])})
@@ -366,46 +362,33 @@ class KerasMemory(KerasLinear):
                  input_shape: Tuple[int, ...] = (120, 160, 3),
                  mem_length: int = 3,
                  mem_depth: int = 0,
-                 mem_start_speed: float = 0.0,
-                 **kwargs):
+                 mem_start_speed: float = 0.0):
         self.mem_length = mem_length
         self.mem_start_speed = mem_start_speed
-        # create memory of [anlge=0, throttle=mem_start_speed] * mem_length
-        self.mem_seq = deque([[0.0, mem_start_speed]] * mem_length)
+        self.mem_seq = deque([[0, mem_start_speed]] * mem_length)
         self.mem_depth = mem_depth
-        super().__init__(interpreter, input_shape, **kwargs)
+        super().__init__(interpreter, input_shape)
 
     def seq_size(self) -> int:
         return self.mem_length + 1
 
     def create_model(self):
         return default_memory(self.input_shape,
-                              self.mem_length, self.mem_depth)
+                              self.mem_length, self.mem_depth, )
 
     def load(self, model_path: str) -> None:
         super().load(model_path)
-        mem_shape = self.interpreter.get_input_shape('mem_in')
-        # take the mem_shape (index 1), the length (index 1) and divide by 2.
-        self.mem_length = mem_shape[1] // 2
-        # create memory of [anlge=0, throttle=mem_start_speed] * mem_length
-        self.mem_seq = deque([[0.0, self.mem_start_speed]] * self.mem_length)
-        logger.info(f'Loaded {type(self).__name__} model with mem length'
-                    f' {self.mem_length}')
+        self.mem_length = self.interpreter.get_input_shapes()[1][1] // 2
+        self.mem_seq = deque([[0, self.mem_start_speed]] * self.mem_length)
+        logger.info(f'Loaded memory model with mem length {self.mem_length}')
 
-    def run(self, img_arr: np.ndarray, *other_arr: List[float]) -> \
+    def run(self, img_arr: np.ndarray, other_arr: List[float] = None) -> \
             Tuple[Union[float, np.ndarray], ...]:
         # Only called at start to fill the previous values
+
         np_mem_arr = np.array(self.mem_seq).reshape((2 * self.mem_length,))
-        norm_img_arr = normalize_image(img_arr)
-        # create dictionary on the fly, we expect the order of the arguments:
-        # img_arr, *other_arr to exactly match the order of the
-        # self.output_shape() first dictionary keys, because that's how we
-        # set up the model
-        values = (norm_img_arr, np_mem_arr)
-        # note output_shapes() returns a 2-tuple of dicts for input shapes
-        # and output shapes(), so we need the first tuple here
-        input_dict = dict(zip(self.output_shapes()[0].keys(), values))
-        angle, throttle = self.inference_from_dict(input_dict)
+        img_arr_norm = normalize_image(img_arr)
+        angle, throttle = super().inference(img_arr_norm, np_mem_arr)
         # fill new values into back of history list for next call
         self.mem_seq.popleft()
         self.mem_seq.append([angle, throttle])
@@ -435,7 +418,7 @@ class KerasMemory(KerasLinear):
 
     def output_shapes(self):
         # need to cut off None from [None, 120, 160, 3] tensor shape
-        img_shape = self.get_input_shape('img_in')[1:]
+        img_shape = self.get_input_shapes()[0][1:]
         shapes = ({'img_in': tf.TensorShape(img_shape),
                    'mem_in': tf.TensorShape(2 * self.mem_length)},
                   {'n_outputs0': tf.TensorShape([]),
@@ -472,7 +455,7 @@ class KerasInferred(KerasPilot):
 
     def output_shapes(self):
         # need to cut off None from [None, 120, 160, 3] tensor shape
-        img_shape = self.get_input_shape('img_in')[1:]
+        img_shape = self.get_input_shapes()[0][1:]
         shapes = ({'img_in': tf.TensorShape(img_shape)},
                   {'n_outputs0': tf.TensorShape([])})
         return shapes
@@ -528,7 +511,7 @@ class KerasIMU(KerasPilot):
 
     def output_shapes(self):
         # need to cut off None from [None, 120, 160, 3] tensor shape
-        img_shape = self.get_input_shape('img_in')[1:]
+        img_shape = self.get_input_shapes()[0][1:]
         # the keys need to match the models input/output layers
         shapes = ({'img_in': tf.TensorShape(img_shape),
                    'imu_in': tf.TensorShape([self.num_imu_inputs])},
@@ -567,7 +550,7 @@ class KerasBehavioral(KerasCategorical):
 
     def output_shapes(self):
         # need to cut off None from [None, 120, 160, 3] tensor shape
-        img_shape = self.get_input_shape('img_in')[1:]
+        img_shape = self.get_input_shapes()[0][1:]
         # the keys need to match the models input/output layers
         shapes = ({'img_in': tf.TensorShape(img_shape),
                    'xbehavior_in': tf.TensorShape([self.num_behavior_inputs])},
@@ -595,7 +578,7 @@ class KerasLocalizer(KerasPilot):
     def compile(self):
         self.interpreter.compile(optimizer=self.optimizer, metrics=['acc'],
                                  loss='mse')
-
+        
     def interpreter_to_output(self, interpreter_out) \
             -> Tuple[Union[float, np.ndarray], ...]:
         angle, throttle, track_loc = interpreter_out
@@ -614,7 +597,7 @@ class KerasLocalizer(KerasPilot):
 
     def output_shapes(self):
         # need to cut off None from [None, 120, 160, 3] tensor shape
-        img_shape = self.get_input_shape('img_in')[1:]
+        img_shape = self.get_input_shapes()[0][1:]
         # the keys need to match the models input/output layers
         shapes = ({'img_in': tf.TensorShape(img_shape)},
                   {'angle': tf.TensorShape([]),
@@ -668,7 +651,7 @@ class KerasLSTM(KerasPilot):
         throttle = records[-1].underlying['user/throttle']
         return {'model_outputs': [angle, throttle]}
 
-    def run(self, img_arr, *other_arr):
+    def run(self, img_arr, other_arr=None):
         if img_arr.shape[2] == 3 and self.input_shape[2] == 1:
             img_arr = dk.utils.rgb2gray(img_arr)
 
@@ -680,8 +663,7 @@ class KerasLSTM(KerasPilot):
         new_shape = (self.seq_length, *self.input_shape)
         img_arr = np.array(self.img_seq).reshape(new_shape)
         img_arr_norm = normalize_image(img_arr)
-        input_dict = {'img_in': img_arr_norm}
-        return self.inference_from_dict(input_dict)
+        return self.inference(img_arr_norm, other_arr)
 
     def interpreter_to_output(self, interpreter_out) \
             -> Tuple[Union[float, np.ndarray], ...]:
@@ -691,7 +673,7 @@ class KerasLSTM(KerasPilot):
 
     def output_shapes(self):
         # need to cut off None from [None, 120, 160, 3] tensor shape
-        img_shape = self.get_input_shape('img_in')[1:]
+        img_shape = self.get_input_shapes()[0][1:]
         # the keys need to match the models input/output layers
         shapes = ({'img_in': tf.TensorShape(img_shape)},
                   {'model_outputs': tf.TensorShape([self.num_outputs])})
@@ -745,7 +727,7 @@ class Keras3D_CNN(KerasPilot):
         throttle = records[-1].underlying['user/throttle']
         return {'outputs': [angle, throttle]}
 
-    def run(self, img_arr, *other_arr):
+    def run(self, img_arr, other_arr=None):
         if img_arr.shape[2] == 3 and self.input_shape[2] == 1:
             img_arr = dk.utils.rgb2gray(img_arr)
 
@@ -757,8 +739,7 @@ class Keras3D_CNN(KerasPilot):
         new_shape = (self.seq_length, *self.input_shape)
         img_arr = np.array(self.img_seq).reshape(new_shape)
         img_arr_norm = normalize_image(img_arr)
-        input_dict = {'img_in': img_arr_norm}
-        return self.inference_from_dict(input_dict)
+        return self.inference(img_arr_norm, other_arr)
 
     def interpreter_to_output(self, interpreter_out) \
             -> Tuple[Union[float, np.ndarray], ...]:
@@ -768,7 +749,7 @@ class Keras3D_CNN(KerasPilot):
 
     def output_shapes(self):
         # need to cut off None from [None, 120, 160, 3] tensor shape
-        img_shape = self.get_input_shape('img_in')[1:]
+        img_shape = self.get_input_shapes()[0][1:]
         # the keys need to match the models input/output layers
         shapes = ({'img_in': tf.TensorShape(img_shape)},
                   {'outputs': tf.TensorShape([self.num_outputs])})
@@ -811,22 +792,11 @@ def conv2d(filters, kernel, strides, layer_num, activation='relu'):
     :param activation:  activation, defaults to relu
     :return:            tf.keras Convolution2D layer
     """
-    regularizer_type = "l1" # set to "None" to disable regularization
-    regularizer_lambda = 0.01 
-
-    if regularizer_type == "l1":
-        regularizer = l1(regularizer_lambda)
-    elif regularization_type == "l2":
-        regularizer = l2(regularizer_lambda)
-    else:
-        regularizer = None
-
     return Convolution2D(filters=filters,
                          kernel_size=(kernel, kernel),
                          strides=(strides, strides),
                          activation=activation,
-                         name='conv2d_' + str(layer_num),
-                         kernel_regularizer=regularizer)
+                         name='conv2d_' + str(layer_num))
 
 
 def core_cnn_layers(img_in, drop, l4_stride=1):
@@ -854,23 +824,13 @@ def core_cnn_layers(img_in, drop, l4_stride=1):
     return x
 
 
-def default_n_linear(num_outputs, input_shape=(120, 160, 3)): # Referred to as Linear model in report
+def default_n_linear(num_outputs, input_shape=(120, 160, 3)):
     drop = 0.2
-    regularizer_type = "l1" # set to "None" to disable regularization
-    regularizer_lambda = 0.01 
-
-    if regularizer_type == "l1":
-        regularizer = l1(regularizer_lambda)
-    elif regularization_type == "l2":
-        regularizer = l2(regularizer_lambda)
-    else:
-        regularizer = None
-
     img_in = Input(shape=input_shape, name='img_in')
     x = core_cnn_layers(img_in, drop)
-    x = Dense(100, activation='relu', name='dense_1', kernel_regularizer=regularizer)(x)
+    x = Dense(100, activation='relu', name='dense_1')(x)
     x = Dropout(drop)(x)
-    x = Dense(50, activation='relu', name='dense_2', kernel_regularizer=regularizer)(x)
+    x = Dense(50, activation='relu', name='dense_2')(x)
     x = Dropout(drop)(x)
 
     outputs = []
@@ -882,20 +842,9 @@ def default_n_linear(num_outputs, input_shape=(120, 160, 3)): # Referred to as L
     return model
 
 
-def default_memory(input_shape=(120, 160, 3), mem_length=3, mem_depth=0): # Referred to as Memory model in report
+def default_memory(input_shape=(120, 160, 3), mem_length=3, mem_depth=0):
     drop = 0.2
     drop2 = 0.1
-
-    regularizer_type = "l1" # set to "None" to disable regularization
-    regularizer_lambda = 0.01 
-
-    if regularizer_type == "l1":
-        regularizer = l1(regularizer_lambda)
-    elif regularization_type == "l2":
-        regularizer = l2(regularizer_lambda)
-    else:
-        regularizer = None
-
     logger.info(f'Creating memory model with length {mem_length}, depth '
                 f'{mem_depth}')
     img_in = Input(shape=input_shape, name='img_in')
@@ -903,15 +852,15 @@ def default_memory(input_shape=(120, 160, 3), mem_length=3, mem_depth=0): # Refe
     mem_in = Input(shape=(2 * mem_length,), name='mem_in')
     y = mem_in
     for i in range(mem_depth):
-        y = Dense(4 * mem_length, activation='relu', name=f'mem_{i}', kernel_regularizer=regularizer)(y)
+        y = Dense(4 * mem_length, activation='relu', name=f'mem_{i}')(y)
         y = Dropout(drop2)(y)
     for i in range(1, mem_length):
-        y = Dense(2 * (mem_length - i), activation='relu', name=f'mem_c_{i}', kernel_regularizer=regularizer)(y)
+        y = Dense(2 * (mem_length - i), activation='relu', name=f'mem_c_{i}')(y)
         y = Dropout(drop2)(y)
     x = concatenate([x, y])
-    x = Dense(100, activation='relu', name='dense_1', kernel_regularizer=regularizer)(x)
+    x = Dense(100, activation='relu', name='dense_1')(x)
     x = Dropout(drop)(x)
-    x = Dense(50, activation='relu', name='dense_2', kernel_regularizer=regularizer)(x)
+    x = Dense(50, activation='relu', name='dense_2')(x)
     x = Dropout(drop)(x)
     activation = ['tanh', 'sigmoid']
     outputs = [Dense(1, activation=activation[i], name='n_outputs' + str(i))(x)
@@ -966,7 +915,7 @@ def default_imu(num_outputs, num_imu_inputs, input_shape):
     return model
 
 
-def default_bhv(num_bvh_inputs, input_shape): 
+def default_bhv(num_bvh_inputs, input_shape):
     drop = 0.2
     img_in = Input(shape=input_shape, name='img_in')
     # tensorflow is ordering the model inputs alphabetically in tensorrt,
@@ -992,7 +941,7 @@ def default_bhv(num_bvh_inputs, input_shape):
     angle_out = Dense(15, activation='softmax', name='angle_out')(z)
     # Categorical output of throttle into 20 bins
     throttle_out = Dense(20, activation='softmax', name='throttle_out')(z)
-
+        
     model = Model(inputs=[img_in, bvh_in], outputs=[angle_out, throttle_out],
                   name='behavioral')
     return model
@@ -1024,50 +973,41 @@ def default_loc(num_locations, input_shape):
     return model
 
 
-def rnn_lstm(seq_length=3, num_outputs=2, input_shape=(120, 160, 3)): # Referred to as RNN-lSTM model in report
+def rnn_lstm(seq_length=3, num_outputs=2, input_shape=(120, 160, 3)):
     # add sequence length dimensions as keras time-distributed expects shape
     # of (num_samples, seq_length, input_shape)
     img_seq_shape = (seq_length,) + input_shape
     img_in = Input(shape=img_seq_shape, name='img_in')
     drop_out = 0.3
-    regularizer_type = "l1" # set to "None" to disable regularization
-    regularizer_lambda = 0.01 
-
-    if regularizer_type == "l1":
-        regularizer = l1(regularizer_lambda)
-    elif regularization_type == "l2":
-        regularizer = l2(regularizer_lambda)
-    else:
-        regularizer = None
 
     x = img_in
-    x = TD(Convolution2D(24, (5, 5), strides=(2, 2), activation='relu', kernel_regularizer=regularizer))(x)
+    x = TD(Convolution2D(24, (5, 5), strides=(2, 2), activation='relu'))(x)
     x = TD(Dropout(drop_out))(x)
-    x = TD(Convolution2D(32, (5, 5), strides=(2, 2), activation='relu', kernel_regularizer=regularizer))(x)
+    x = TD(Convolution2D(32, (5, 5), strides=(2, 2), activation='relu'))(x)
     x = TD(Dropout(drop_out))(x)
-    x = TD(Convolution2D(32, (3, 3), strides=(2, 2), activation='relu', kernel_regularizer=regularizer))(x)
+    x = TD(Convolution2D(32, (3, 3), strides=(2, 2), activation='relu'))(x)
     x = TD(Dropout(drop_out))(x)
-    x = TD(Convolution2D(32, (3, 3), strides=(1, 1), activation='relu', kernel_regularizer=regularizer))(x)
+    x = TD(Convolution2D(32, (3, 3), strides=(1, 1), activation='relu'))(x)
     x = TD(Dropout(drop_out))(x)
     x = TD(MaxPooling2D(pool_size=(2, 2)))(x)
     x = TD(Flatten(name='flattened'))(x)
     x = TD(Dense(100, activation='relu'))(x)
     x = TD(Dropout(drop_out))(x)
 
-    x = LSTM(128, return_sequences=True, name="LSTM_seq", kernel_regularizer=regularizer)(x)
+    x = LSTM(128, return_sequences=True, name="LSTM_seq")(x)
     x = Dropout(.1)(x)
-    x = LSTM(128, return_sequences=False, name="LSTM_fin", kernel_regularizer=regularizer)(x)
+    x = LSTM(128, return_sequences=False, name="LSTM_fin")(x)
     x = Dropout(.1)(x)
-    x = Dense(128, activation='relu', kernel_regularizer=regularizer)(x)
+    x = Dense(128, activation='relu')(x)
     x = Dropout(.1)(x)
-    x = Dense(64, activation='relu', kernel_regularizer=regularizer)(x)
-    x = Dense(10, activation='relu', kernel_regularizer=regularizer)(x)
+    x = Dense(64, activation='relu')(x)
+    x = Dense(10, activation='relu')(x)
     out = Dense(num_outputs, activation='linear', name='model_outputs')(x)
     model = Model(inputs=[img_in], outputs=[out], name='lstm')
     return model
 
 
-def build_3d_cnn(input_shape, s, num_outputs): # Referred to as 3DCNN model in report
+def build_3d_cnn(input_shape, s, num_outputs):
     """
     Credit: https://github.com/jessecha/DNRacing/blob/master/3D_CNN_Model/model.py
 
@@ -1077,57 +1017,46 @@ def build_3d_cnn(input_shape, s, num_outputs): # Referred to as 3DCNN model in r
     :return:                keras model
     """
     drop = 0.5
-    regularizer_type = "l1" # set to "None" to disable regularization
-    regularizer_lambda = 0.01 
-
-    if regularizer_type == "l1":
-        regularizer = l1(regularizer_lambda)
-    elif regularizer_type == "l2":
-        regularizer = l2(regularizer_lambda)
-    else:
-        regularizer = None
-
     input_shape = (s, ) + input_shape
-
     img_in = Input(shape=input_shape, name='img_in')
     x = img_in
     # Second layer
     x = Conv3D(
             filters=16, kernel_size=(3, 3, 3), strides=(1, 3, 3),
-            data_format='channels_last', padding='same', activation='relu', kernel_regularizer=regularizer)(x)
+            data_format='channels_last', padding='same', activation='relu')(x)
     x = MaxPooling3D(
             pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
             data_format=None)(x)
     # Third layer
     x = Conv3D(
             filters=32, kernel_size=(3, 3, 3), strides=(1, 1, 1),
-            data_format='channels_last', padding='same', activation='relu', kernel_regularizer=regularizer)(x)
+            data_format='channels_last', padding='same', activation='relu')(x)
     x = MaxPooling3D(
         pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
-        data_format=None)(x) 
+        data_format=None)(x)
     # Fourth layer
     x = Conv3D(
             filters=64, kernel_size=(3, 3, 3), strides=(1, 1, 1),
-            data_format='channels_last', padding='same', activation='relu', kernel_regularizer=regularizer)(x)
+            data_format='channels_last', padding='same', activation='relu')(x)
     x = MaxPooling3D(
             pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
             data_format=None)(x)
     # Fifth layer
     x = Conv3D(
             filters=128, kernel_size=(3, 3, 3), strides=(1, 1, 1),
-            data_format='channels_last', padding='same', activation='relu', kernel_regularizer=regularizer)(x)
+            data_format='channels_last', padding='same', activation='relu')(x)
     x = MaxPooling3D(
             pool_size=(1, 2, 2), strides=(1, 2, 2), padding='valid',
             data_format=None)(x)
     # Fully connected layer
     x = Flatten()(x)
 
-    x = Dense(256, kernel_regularizer=regularizer)(x)
+    x = Dense(256)(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Dropout(drop)(x)
 
-    x = Dense(256, kernel_regularizer=regularizer)(x)
+    x = Dense(256)(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Dropout(drop)(x)
@@ -1137,49 +1066,39 @@ def build_3d_cnn(input_shape, s, num_outputs): # Referred to as 3DCNN model in r
     return model
 
 
-def default_latent(num_outputs, input_shape): # Referred to as Latent model in report
+def default_latent(num_outputs, input_shape):
     # TODO: this auto-encoder should run the standard cnn in encoding and
     #  have corresponding decoder. Also outputs should be reversed with
     #  images at end.
     drop = 0.2
-    regularizer_type = "l1" # set to "None" to disable regularization
-    regularizer_lambda = 0.01 
-
-    if regularizer_type == "l1":
-        regularizer = l1(regularizer_lambda)
-    elif regularization_type == "l2":
-        regularizer = l2(regularizer_lambda)
-    else:
-        regularizer = None
-
     img_in = Input(shape=input_shape, name='img_in')
     x = img_in
-    x = Convolution2D(24, 5, strides=2, activation='relu', name="conv2d_1", kernel_regularizer=regularizer)(x)
+    x = Convolution2D(24, 5, strides=2, activation='relu', name="conv2d_1")(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(32, 5, strides=2, activation='relu', name="conv2d_2", kernel_regularizer=regularizer)(x)
+    x = Convolution2D(32, 5, strides=2, activation='relu', name="conv2d_2")(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(32, 5, strides=2, activation='relu', name="conv2d_3", kernel_regularizer=regularizer)(x)
+    x = Convolution2D(32, 5, strides=2, activation='relu', name="conv2d_3")(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(32, 3, strides=1, activation='relu', name="conv2d_4", kernel_regularizer=regularizer)(x)
+    x = Convolution2D(32, 3, strides=1, activation='relu', name="conv2d_4")(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(32, 3, strides=1, activation='relu', name="conv2d_5", kernel_regularizer=regularizer)(x)
+    x = Convolution2D(32, 3, strides=1, activation='relu', name="conv2d_5")(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(64, 3, strides=2, activation='relu', name="conv2d_6", kernel_regularizer=regularizer)(x)
+    x = Convolution2D(64, 3, strides=2, activation='relu', name="conv2d_6")(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(64, 3, strides=2, activation='relu', name="conv2d_7", kernel_regularizer=regularizer)(x)
+    x = Convolution2D(64, 3, strides=2, activation='relu', name="conv2d_7")(x)
     x = Dropout(drop)(x)
-    x = Convolution2D(64, 1, strides=2, activation='relu', name="latent", kernel_regularizer=regularizer)(x)
-
+    x = Convolution2D(64, 1, strides=2, activation='relu', name="latent")(x)
+    
     y = Conv2DTranspose(filters=64, kernel_size=3, strides=2,
-                        name="deconv2d_1", kernel_regularizer=regularizer)(x)
+                        name="deconv2d_1")(x)
     y = Conv2DTranspose(filters=64, kernel_size=3, strides=2,
-                        name="deconv2d_2", kernel_regularizer=regularizer)(y)
+                        name="deconv2d_2")(y)
     y = Conv2DTranspose(filters=32, kernel_size=3, strides=2,
-                        name="deconv2d_3", kernel_regularizer=regularizer)(y)
+                        name="deconv2d_3")(y)
     y = Conv2DTranspose(filters=32, kernel_size=3, strides=2,
-                        name="deconv2d_4", kernel_regularizer=regularizer)(y)
+                        name="deconv2d_4")(y)
     y = Conv2DTranspose(filters=32, kernel_size=3, strides=2,
-                        name="deconv2d_5", kernel_regularizer=regularizer)(y)
+                        name="deconv2d_5")(y)
     y = Conv2DTranspose(filters=1, kernel_size=3, strides=2, name="img_out")(y)
     
     x = Flatten(name='flattened')(x)
