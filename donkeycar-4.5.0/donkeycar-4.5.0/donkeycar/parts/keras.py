@@ -839,7 +839,7 @@ def core_cnn_layers(img_in, drop, l4_stride=1):
 
 def default_n_linear(num_outputs, input_shape=(120, 160, 3)):
     drop = 0.2
-    regularizer_type = "l1" # set to "None" to disable regularization
+    regularizer_type = None # set to "None" to disable regularization
     regularizer_lambda = 0.01 
 
     if regularizer_type == "l1":
@@ -1007,14 +1007,14 @@ def default_loc(num_locations, input_shape):
     return model
 
 
-def rnn_lstm(seq_length=3, num_outputs=2, input_shape=(120, 160, 3)):
+def rnn_lstm(seq_length=5, num_outputs=2, input_shape=(120, 160, 3)):
     # add sequence length dimensions as keras time-distributed expects shape
     # of (num_samples, seq_length, input_shape)
     img_seq_shape = (seq_length,) + input_shape
     img_in = Input(shape=img_seq_shape, name='img_in')
     drop_out = 0.3
 
-    regularizer_type = "l1" # set to "None" to disable regularization
+    regularizer_type = None # set to "None" to disable regularization
     regularizer_lambda = 0.01 
 
     if regularizer_type == "l1":
@@ -1061,7 +1061,7 @@ def build_3d_cnn(input_shape, s, num_outputs):
     :return:                keras model
     """
     drop = 0.5
-    regularizer_type = "l1"  # Set to "None" to disable regularization
+    regularizer_type = None  # Set to "None" to disable regularization
     regularizer_lambda = 0.01
 
     if regularizer_type == "l1":
