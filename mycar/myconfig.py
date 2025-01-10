@@ -131,7 +131,7 @@ DATA_PATH = os.path.join(CAR_PATH, 'data_loop/images'+ today, tub_number)
 # #line parameter --type to the python manage.py train and drive commands.
 # # tensorflow models: (linear|categorical|tflite_linear|tensorrt_linear)
 # # pytorch models: (resnet18)
-DEFAULT_MODEL_TYPE = 'linear' #models: imu, memory, behavior, inferred, localizer, categorical, rnn, 3d, linear, tflite_imu, tflite_memory, tflite_behavior, tflite_inferred, tflite_localizer, tflite_categorical, tflite_rnn, tflite_3d, tflite_linear, tensorrt_imu, tensorrt_memory, tensorrt_behavior, tensorrt_inferred, tensorrt_localizer, tensorrt_categorical, tensorrt_rnn, tensorrt_3d, tensorrt_linear
+DEFAULT_MODEL_TYPE = 'rnn' #models: imu, memory, behavior, inferred, localizer, categorical, rnn, 3d, linear, tflite_imu, tflite_memory, tflite_behavior, tflite_inferred, tflite_localizer, tflite_categorical, tflite_rnn, tflite_3d, tflite_linear, tensorrt_imu, tensorrt_memory, tensorrt_behavior, tensorrt_inferred, tensorrt_localizer, tensorrt_categorical, tensorrt_rnn, tensorrt_3d, tensorrt_linear
 BATCH_SIZE = 32                #how many records to use when doing one pass of gradient decent. Use a smaller number if your gpu is running out of memory.
 # TRAIN_TEST_SPLIT = 0.8          #what percent of records to use for training. the remaining used for validation.
 MAX_EPOCHS = 100                #how many times to visit all records of your data
@@ -141,8 +141,8 @@ MAX_EPOCHS = 100                #how many times to visit all records of your dat
 # EARLY_STOP_PATIENCE = 5         #how many epochs to wait before no improvement
 # MIN_DELTA = .0005               #early stop will want this much loss change before calling it improved.
 # PRINT_MODEL_SUMMARY = True      #print layers and weights to stdout
-# OPTIMIZER = None                #adam, sgd, rmsprop, etc.. None accepts default
-# LEARNING_RATE = 0.001           #only used when OPTIMIZER specified
+OPTIMIZER = "adam"                #adam, sgd, rmsprop, etc.. None accepts default
+LEARNING_RATE = 0.0005            #only used when OPTIMIZER specified
 # LEARNING_RATE_DECAY = 0.0       #only used when OPTIMIZER specified
 # SEND_BEST_MODEL_TO_PI = False   #change to true to automatically send best model during training
 # CACHE_IMAGES = True             #keep images in memory. will speed succesive epochs, but crater if not enough mem.

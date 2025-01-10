@@ -794,8 +794,8 @@ def conv2d(filters, kernel, strides, layer_num, activation='relu'):
     :param activation:  activation, defaults to relu
     :return:            tf.keras Convolution2D layer
     """
-    regularizer_type = "l1" # set to "None" to disable regularization
-    regularizer_lambda = 0.01 
+    regularizer_type = "l2" # set to "None" to disable regularization
+    regularizer_lambda = 0.0001 
 
     if regularizer_type == "l1":
         regularizer = l1(regularizer_lambda)
@@ -839,8 +839,8 @@ def core_cnn_layers(img_in, drop, l4_stride=1):
 
 def default_n_linear(num_outputs, input_shape=(120, 160, 3)):
     drop = 0.2
-    regularizer_type = None # set to "None" to disable regularization
-    regularizer_lambda = 0.01 
+    regularizer_type = "l2" # set to "None" to disable regularization
+    regularizer_lambda = 0.0001 
 
     if regularizer_type == "l1":
         regularizer = l1(regularizer_lambda)
@@ -1014,8 +1014,8 @@ def rnn_lstm(seq_length=5, num_outputs=2, input_shape=(120, 160, 3)):
     img_in = Input(shape=img_seq_shape, name='img_in')
     drop_out = 0.3
 
-    regularizer_type = None # set to "None" to disable regularization
-    regularizer_lambda = 0.01 
+    regularizer_type = "l2" # set to "None" to disable regularization
+    regularizer_lambda = 0.0001 
 
     if regularizer_type == "l1":
         regularizer = l1(regularizer_lambda)
@@ -1060,9 +1060,9 @@ def build_3d_cnn(input_shape, s, num_outputs):
     :param num_outputs:     output dimension
     :return:                keras model
     """
-    drop = 0.5
-    regularizer_type = None  # Set to "None" to disable regularization
-    regularizer_lambda = 0.01
+    drop = 0.3
+    regularizer_type = "l2"  # Set to "None" to disable regularization
+    regularizer_lambda = 0.0001
 
     if regularizer_type == "l1":
         regularizer = l1(regularizer_lambda)
